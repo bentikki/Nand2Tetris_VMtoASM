@@ -31,6 +31,7 @@ namespace VMtoASM
                 Console.WriteLine("An Error occured...");
                 Console.WriteLine(nameof(e));
                 Console.WriteLine(e.Message);
+
             }
         }
     }

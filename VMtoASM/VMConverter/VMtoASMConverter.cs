@@ -10,6 +10,9 @@ namespace VMtoASM.VMConverter
     class VMtoASMConverter
     {
         private const string ALLOWED_INPUT_FILES = "*.vm";
+        private const int THIS_THAT_SIZE = 500;
+
+
 
         // Input and output directories.
         private DirectoryInfo inputDirectory;
@@ -17,7 +20,25 @@ namespace VMtoASM.VMConverter
 
         // Stack to contain the converted ASM lines.
         private Queue<string> convertedLinesStack;
-        private Stack<short> globalStack;
+
+        // Simulation of stack functions.
+        private Stack<short> globalStack;   // Global stack sim
+        private short thisPointer;          // THIS pointer sim
+        private short[] thisMemory;         // THIS array to contain memory
+
+        private short thatPointer;          // THAT pointer sim
+        private short[] thatMemory;         // THAT array to contain memory
+
+        private short[] localMemory;        // LOCAL array to contain memory
+        private short[] argumentMemory;     // ARG array to contain memory
+        private short[] tempMemory;         // TEMP array to contain memory
+        private short maxTempMemory = 12;   // TEMP max memory location
+
+        private short[] staticMemory;           // STATIC array to contain memory
+        private short staticStartMemory = 16;   // STATIC start location
+
+
+
 
         // Counter to keep track of available label numbers.
         private ulong labelCounter = 0;
@@ -28,6 +49,14 @@ namespace VMtoASM.VMConverter
         {
             this.CreateStartupDirectories(inputDirectory, outputDirectory);
             this.AvailableInputFiles = this.GetAvailableInputFiles();
+
+            // Setup this and that arrays
+            this.thisMemory = new short[THIS_THAT_SIZE];
+            this.thatMemory = new short[THIS_THAT_SIZE];
+            this.localMemory = new short[THIS_THAT_SIZE];
+            this.argumentMemory = new short[THIS_THAT_SIZE];
+            this.tempMemory = new short[THIS_THAT_SIZE];
+            this.staticMemory = new short[THIS_THAT_SIZE];
         }
 
         /// <summary>
@@ -76,23 +105,159 @@ namespace VMtoASM.VMConverter
                 // If the line is longer than 3 characters, we know its not a logical command (add/sub/neg etc.)
                 if(line.Length > 3)
                 {
-                    // Check if the line is Enqueue
-                    if (line.Substring(0, 4) == "push")
+                    string[] pointerArgumentArray = line.Split(" ");
+                    // Check if the line is Push
+                    if (pointerArgumentArray[0] == "push")
                     {
 
                         // Check if the line to Enqueue is a constant.
-                        if (line.Substring(5, 8) == "constant")
+                        if (pointerArgumentArray[1] == "constant")
                         {
                             // Check if the constant is a number
-                            if (Int16.TryParse(line.Substring(13), out short constantNum))
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
                             {
                                 this.AddConstant(constantNum);
+
+                                // Advance the stack pointer.
+                                this.PointerAdvance();
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "pointer") // Check if the line to Enqueue is a constant.
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                if (constantNum == 0)
+                                {
+                                    this.PushPointer0();
+                                }
+                                else if (constantNum == 1)
+                                {
+                                    this.PushPointer1();
+                                }
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "this")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PushThis(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "that")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PushThat(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "local")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PushLocal(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "argument")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PushArgument(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "temp")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PushTemp(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "static")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PushStatic(constantNum);
                             }
                         }
 
-                        // Advance the stack pointer.
-                        this.PointerAdvance();
                     }
+                    else if (pointerArgumentArray[0] == "pop") // Check if POP
+                    {
+
+                        // Check if the line to Enqueue is a constant.
+                        if (pointerArgumentArray[1] == "pointer")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                if(constantNum == 0)
+                                {
+                                    this.PopPointer0();
+                                }
+                                else if (constantNum == 1)
+                                {
+                                    this.PopPointer1();
+                                }
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "this")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PopThis(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "that")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PopThat(constantNum);
+                            }
+                        }
+                        else if(pointerArgumentArray[1] == "local")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PopLocal(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "argument")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PopArgument(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "temp")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PopTemp(constantNum);
+                            }
+                        }
+                        else if (pointerArgumentArray[1] == "static")
+                        {
+                            // Check if the constant is a number
+                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            {
+                                this.PopStatic(constantNum);
+                            }
+                        }
+
+
+                    }
+
                 }
                 else // line.Length <= 3
                 {
@@ -134,12 +299,13 @@ namespace VMtoASM.VMConverter
                 if (line == string.Empty)
                     throw new Exception("No known conversion was found on line: " + line);
 
-                //Test
+                // Test START
                 List<string> currentLinesAdded = new List<string>();
                 currentLinesAdded = this.convertedLinesStack.ToList();
                 currentLinesAdded.RemoveRange(0, beginningLinesCount);
 
                 List<string> currentLinesAddedDisplay = currentLinesAdded;
+                // Test END
                 
             }
 
@@ -198,8 +364,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandAdd()
         {
             // Stack operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             int result = x + y;
 
@@ -238,8 +404,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandEq()
         {
             // Stack operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             short result = this.BoolToShort(x == y);
 
@@ -292,8 +458,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandLt()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             short result = this.BoolToShort(x < y);
 
@@ -335,8 +501,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandGt()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             short result = this.BoolToShort(x > y);
 
@@ -379,8 +545,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandAnd()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             int result = x & y;
 
@@ -405,8 +571,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandOr()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             int result = x | y;
 
@@ -431,7 +597,7 @@ namespace VMtoASM.VMConverter
         private void LogCommandNot()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
+            short y = this.PopFromStack();
 
             int result = ~y;
 
@@ -452,7 +618,7 @@ namespace VMtoASM.VMConverter
         private void LogCommandNeg()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
+            short y = this.PopFromStack();
 
             int result = y * -1;
 
@@ -473,8 +639,8 @@ namespace VMtoASM.VMConverter
         private void LogCommandSub()
         {
             // Stack Operation
-            short y = this.globalStack.Pop();
-            short x = this.globalStack.Pop();
+            short y = this.PopFromStack();
+            short x = this.PopFromStack();
 
             int result = x - y;
 
@@ -497,6 +663,579 @@ namespace VMtoASM.VMConverter
             convertedLinesStack.Enqueue("A=A-1");
             convertedLinesStack.Enqueue("M=M-D");
             convertedLinesStack.Enqueue("D=0");
+        }
+
+        /// <summary>
+        /// Adds pop value to thisPointer.
+        /// </summary>
+        private void PopPointer0()
+        {
+            // Stack operation
+            this.thisPointer = this.PopFromStack();
+
+            // Print ASM
+            //'
+            //@THIS		// pop pointer 0
+            //D=A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+            convertedLinesStack.Enqueue("@THIS");
+            convertedLinesStack.Enqueue("D=A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+
+        }
+
+        /// <summary>
+        /// Adds pop value to thatPointer.
+        /// </summary>
+        private void PopPointer1()
+        {
+            // Stack operation
+            this.thatPointer = this.PopFromStack();
+
+            // Print ASM
+            //'
+            //@THAT		// pop pointer 1
+            //D=A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+            convertedLinesStack.Enqueue("@THAT");
+            convertedLinesStack.Enqueue("D=A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+        }
+
+        private void PopThis(short memoryLocation)
+        {
+            // Stack operation
+            this.thisMemory[memoryLocation] = this.PopFromStack();
+
+            // Print ASM
+            //'
+            //@THIS		// pop this 2
+            //D=M
+            //@2
+            //D=D+A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+            convertedLinesStack.Enqueue("@THIS");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("D=D+A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+
+        }
+
+        private void PushThis(short memoryLocation)
+        {
+            // Stack operation
+            this.globalStack.Push(this.thisMemory[memoryLocation]);
+
+            // Print ASM
+            //'
+            //@THIS		// push this 2
+            //D=M
+            //@2
+            //A=D+A
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@THIS");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("A=D+A");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+
+
+        }
+
+        private void PopThat(short memoryLocation)
+        {
+            // Stack operation
+            this.thatMemory[memoryLocation] = this.PopFromStack();
+
+            // Print ASM
+            //'
+            //@THAT		// pop that 6
+            //D=M
+            //@6
+            //D=D+A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+            convertedLinesStack.Enqueue("@THAT");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("D=D+A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+
+        }
+
+        private void PushThat(short memoryLocation)
+        {
+            // Stack operation
+            this.globalStack.Push(this.thatMemory[memoryLocation]);
+
+            // Print ASM
+            //'
+            //@THAT		// push that 6
+            //D=M
+            //@6			
+            //A=D+A
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@THAT");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("A=D+A");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+
+        }
+
+        private void PopLocal(short memoryLocation)
+        {
+            // Stack operation
+            short popValue = this.PopFromStack();
+            this.localMemory[memoryLocation] = popValue;
+
+            // Print ASM
+            //'
+            //@LCL	// pop local 0
+            //D=M
+            //@0
+            //D=D+A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+            convertedLinesStack.Enqueue("@LCL");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("D=D+A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+
+
+        }
+
+        private void PushLocal(short memoryLocation)
+        {
+            // Stack operation
+            this.globalStack.Push(this.localMemory[memoryLocation]);
+
+            // Print ASM
+            //'
+            //@LCL	// push local 0
+            //D=M
+            //@0
+            //A=D+A
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@LCL");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("A=D+A");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+
+
+        }
+
+        private void PopArgument(short memoryLocation)
+        {
+            // Stack operation
+            short popValue = this.PopFromStack();
+            this.argumentMemory[memoryLocation] = popValue;
+
+            // Print ASM
+            //'
+            //@ARG	// pop argument 2
+            //D=M
+            //@2
+            //D=D+A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+            convertedLinesStack.Enqueue("@ARG");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("D=D+A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+        }
+
+        private void PushArgument(short memoryLocation)
+        {
+            // Stack operation
+            this.globalStack.Push(this.argumentMemory[memoryLocation]);
+
+            // Print ASM
+            //'
+            //@ARG	// push argument 1
+            //D=M
+            //@1
+            //A=D+A
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@ARG");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + memoryLocation);
+            convertedLinesStack.Enqueue("A=D+A");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+
+
+
+        }
+
+        private void PopTemp(short memoryLocation)
+        {
+
+            int tempMemoryLocation = 5 + memoryLocation;
+
+            if (tempMemoryLocation > this.maxTempMemory || tempMemoryLocation < 1)
+                throw new Exception($"Temp memory location must be between {0} and {this.maxTempMemory}.");
+
+            // Stack operation
+            short popValue = this.PopFromStack();
+            this.tempMemory[tempMemoryLocation] = popValue;
+
+            // Print ASM
+            //'
+            //@R5		// pop temp 6
+            //D=M
+            //@11
+            //D=D+A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+
+            convertedLinesStack.Enqueue("@R5");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + tempMemoryLocation);
+            convertedLinesStack.Enqueue("D=D+A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+
+
+        }
+
+        private void PushTemp(short memoryLocation)
+        {
+            int tempMemoryLocation = 5 + memoryLocation;
+
+
+            if (tempMemoryLocation > this.maxTempMemory || tempMemoryLocation < 1)
+                throw new Exception($"Temp memory location must be between {0} and {this.maxTempMemory}.");
+
+            // Stack operation
+            this.globalStack.Push(this.tempMemory[memoryLocation]);
+            this.tempMemory[memoryLocation] = 0;
+
+            // Print ASM
+            //'
+            //@R5		// push temp 6
+            //D=M
+            //@11
+            //A=D+A
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@R5");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@" + tempMemoryLocation);
+            convertedLinesStack.Enqueue("A=D+A");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+
+        }
+
+
+        private void PopStatic(short memoryLocation)
+        {
+
+            int staticMemoryLocation = this.staticStartMemory + memoryLocation;
+
+            // Stack operation
+            short popValue = this.PopFromStack();
+            this.staticMemory[staticMemoryLocation] = popValue;
+
+            // Print ASM
+            //'
+            //@24			// pop static 8
+            //D=A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //*
+
+
+            convertedLinesStack.Enqueue("@" + staticMemoryLocation);
+            convertedLinesStack.Enqueue("D=A");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("AM=M-1");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@R13");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+
+        }
+
+        private void PushStatic(short memoryLocation)
+        {
+            int staticMemoryLocation = this.staticStartMemory + memoryLocation;
+
+            // Stack operation
+            this.globalStack.Push(this.staticMemory[staticMemoryLocation]);
+            this.staticMemory[staticMemoryLocation] = 0;
+
+            // Print ASM
+            //'
+            //@17			// push static 1
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@" + staticMemoryLocation);
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+
+        }
+
+
+        /// <summary>
+        /// Adds pop value to thisPointer.
+        /// </summary>
+        private void PushPointer0()
+        {
+            // Stack operation
+            this.globalStack.Push(this.thisPointer);
+
+            // Print ASM
+            //'
+            //@THIS 		// push pointer 0
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@THIS");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+        }
+
+        /// <summary>
+        /// Adds pop value to thatPointer.
+        /// </summary>
+        private void PushPointer1()
+        {
+            // Stack operation
+            this.globalStack.Push(this.thatPointer);
+
+            // Print ASM
+            //'
+            //@THAT		// push pointer 1
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@THAT");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+        }
+
+
+
+
+
+
+        private short PopFromStack()
+        {
+            try
+            {
+                short popValue = this.globalStack.Pop();
+                return popValue;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         private string GetUniqueLabel(string labelName)

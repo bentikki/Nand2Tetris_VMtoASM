@@ -1120,7 +1120,6 @@ namespace VMtoASM.VMConverter
             //M=D
             //*
 
-
             convertedLinesStack.Enqueue("@" + staticMemoryLocation);
             convertedLinesStack.Enqueue("D=A");
             convertedLinesStack.Enqueue("@R13");

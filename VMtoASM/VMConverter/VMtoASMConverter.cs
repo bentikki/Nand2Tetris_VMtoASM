@@ -1219,11 +1219,6 @@ namespace VMtoASM.VMConverter
             convertedLinesStack.Enqueue("M=M+1");
         }
 
-
-
-
-
-
         private short PopFromStack()
         {
             try

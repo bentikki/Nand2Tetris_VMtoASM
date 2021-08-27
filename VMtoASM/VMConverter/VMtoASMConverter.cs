@@ -29,10 +29,12 @@ namespace VMtoASM.VMConverter
         private short thatPointer;          // THAT pointer sim
         private short[] thatMemory;         // THAT array to contain memory
 
-        private short[] localMemory;        // LOCAL array to contain memory
-        private short[] argumentMemory;     // ARG array to contain memory
-        private short[] tempMemory;         // TEMP array to contain memory
-        private short maxTempMemory = 12;   // TEMP max memory location
+        private short[] localMemory;            // LOCAL array to contain memory
+        private short[] argumentMemory;         // ARG array to contain memory
+        private short[] tempMemory;             // TEMP array to contain memory
+        private short maxTempMemory = 12;       // TEMP max memory location
+        private short tempStartMemory = 5;      // TEMP start location
+        private short tempAvailableMemory = 8;  // TEMP memory locations available
 
         private short[] staticMemory;           // STATIC array to contain memory
         private short staticStartMemory = 16;   // STATIC start location
@@ -55,7 +57,7 @@ namespace VMtoASM.VMConverter
             this.thatMemory = new short[THIS_THAT_SIZE];
             this.localMemory = new short[THIS_THAT_SIZE];
             this.argumentMemory = new short[THIS_THAT_SIZE];
-            this.tempMemory = new short[THIS_THAT_SIZE];
+            this.tempMemory = new short[tempAvailableMemory];
             this.staticMemory = new short[THIS_THAT_SIZE];
         }
 
@@ -1015,14 +1017,14 @@ namespace VMtoASM.VMConverter
         private void PopTemp(short memoryLocation)
         {
 
-            int tempMemoryLocation = 5 + memoryLocation;
+            int tempMemoryLocation = tempStartMemory + memoryLocation;
 
             if (tempMemoryLocation > this.maxTempMemory || tempMemoryLocation < 1)
                 throw new Exception($"Temp memory location must be between {0} and {this.maxTempMemory}.");
 
             // Stack operation
             short popValue = this.PopFromStack();
-            this.tempMemory[tempMemoryLocation] = popValue;
+            this.tempMemory[memoryLocation] = popValue;
 
             // Print ASM
             //'
@@ -1059,7 +1061,7 @@ namespace VMtoASM.VMConverter
 
         private void PushTemp(short memoryLocation)
         {
-            int tempMemoryLocation = 5 + memoryLocation;
+            int tempMemoryLocation = tempStartMemory + memoryLocation;
 
 
             if (tempMemoryLocation > this.maxTempMemory || tempMemoryLocation < 1)
@@ -1095,7 +1097,6 @@ namespace VMtoASM.VMConverter
             convertedLinesStack.Enqueue("M=M+1");
 
         }
-
 
         private void PopStatic(short memoryLocation)
         {

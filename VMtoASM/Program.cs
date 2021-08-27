@@ -25,14 +25,17 @@ namespace VMtoASM
             try
             {
                 vmToAsmConverter.ConvertAllInputFiles();
+
+                Console.WriteLine("All .VM files was successfully translated to .ASM hack code!");
             }
             catch (Exception e)
             {
                 Console.WriteLine("An Error occured...");
                 Console.WriteLine(nameof(e));
                 Console.WriteLine(e.Message);
-
             }
+            Console.WriteLine();
+            Console.WriteLine("Press any key to exit...");
         }
     }
 }

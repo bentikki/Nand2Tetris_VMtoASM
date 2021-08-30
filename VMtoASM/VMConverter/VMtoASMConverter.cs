@@ -40,8 +40,6 @@ namespace VMtoASM.VMConverter
         private short staticStartMemory = 16;   // STATIC start location
 
 
-
-
         // Counter to keep track of available label numbers.
         private ulong labelCounter = 0;
 
@@ -94,224 +92,225 @@ namespace VMtoASM.VMConverter
             this.convertedLinesStack = new Queue<string>();
             this.globalStack = new Stack<short>();
 
-            foreach (string lineRaw in strippedLinesFromFiles)
+            Dictionary<string, ulong> labelLines = new Dictionary<string, ulong>();
+
+            bool repeatLines = false;
+            ulong startLine = 0;
+            ulong endLine =  (ulong)strippedLinesFromFiles.Count();
+
+            do
             {
-                int beginningLinesCount = this.convertedLinesStack.Count;
+                repeatLines = false;
 
-                // Line to be added to output.
-                StringBuilder convertedLineSB = new StringBuilder();
-
-                // Convert line to lower, to make it case insensitive.
-                string line = lineRaw.ToLower().Trim();
-
-                // If the line is longer than 3 characters, we know its not a logical command (add/sub/neg etc.)
-                if(line.Length > 3)
+                for (ulong lineNumber = startLine; lineNumber < endLine; lineNumber++)
                 {
+                    // Line to be added to output.
+                    StringBuilder convertedLineSB = new StringBuilder();
+                    int beginningLinesCount = this.convertedLinesStack.Count;
+
+
+                    // Convert line to lower, to make it case insensitive.
+                    string line = strippedLinesFromFiles[(int)lineNumber].ToLower().Trim();
+
+                    // Split the line to seperate command, argument and value parts.
                     string[] pointerArgumentArray = line.Split(" ");
-                    // Check if the line is Push
-                    if (pointerArgumentArray[0] == "push")
+                    string lineCommandPart = pointerArgumentArray[0];
+
+                    // If the line first part is push or pop, we know its not a logical command (add/sub/neg etc.)
+                    if (lineCommandPart == "push" || lineCommandPart == "pop")
                     {
 
-                        // Check if the line to Enqueue is a constant.
-                        if (pointerArgumentArray[1] == "constant")
+                        if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
                         {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                            // Check if the line is Push
+                            if (lineCommandPart == "push")
                             {
-                                this.AddConstant(constantNum);
-
-                                // Advance the stack pointer.
-                                this.PointerAdvance();
+                                this.PushSelection(pointerArgumentArray[1], constantNum);
+                            }
+                            else if (lineCommandPart == "pop") // Check if POP
+                            {
+                                this.PopSelection(pointerArgumentArray[1], constantNum);
                             }
                         }
-                        else if (pointerArgumentArray[1] == "pointer") // Check if the line to Enqueue is a constant.
+                        else
                         {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                if (constantNum == 0)
-                                {
-                                    this.PushPointer0();
-                                }
-                                else if (constantNum == 1)
-                                {
-                                    this.PushPointer1();
-                                }
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "this")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PushThis(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "that")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PushThat(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "local")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PushLocal(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "argument")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PushArgument(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "temp")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PushTemp(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "static")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PushStatic(constantNum);
-                            }
+                            throw new ArgumentException($"A {lineCommandPart} command was called with no value. Line: {line}", pointerArgumentArray[2]);
                         }
 
                     }
-                    else if (pointerArgumentArray[0] == "pop") // Check if POP
+                    else if (lineCommandPart == "label") // Check if the command is a label
                     {
-
-                        // Check if the line to Enqueue is a constant.
-                        if (pointerArgumentArray[1] == "pointer")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                if(constantNum == 0)
-                                {
-                                    this.PopPointer0();
-                                }
-                                else if (constantNum == 1)
-                                {
-                                    this.PopPointer1();
-                                }
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "this")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PopThis(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "that")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PopThat(constantNum);
-                            }
-                        }
-                        else if(pointerArgumentArray[1] == "local")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PopLocal(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "argument")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PopArgument(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "temp")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PopTemp(constantNum);
-                            }
-                        }
-                        else if (pointerArgumentArray[1] == "static")
-                        {
-                            // Check if the constant is a number
-                            if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
-                            {
-                                this.PopStatic(constantNum);
-                            }
-                        }
-
-
+                        labelLines.Add(pointerArgumentArray[1], lineNumber + 1);
+                        this.AddLabel(pointerArgumentArray[1]);
                     }
+                    else if (lineCommandPart == "if-goto")   // Check if the comand is a if-goto
+                    {
+                        this.AddIfGoto(pointerArgumentArray[1]);
+                    }
+                    else if (lineCommandPart == "goto")   // Check if the comand is a if-goto
+                    {
+                        this.AddGoto(pointerArgumentArray[1]);
+
+                        //startLine = labelLines[pointerArgumentArray[1]];
+                        //repeatLines = true;
+                        //break;
+                    }
+                    else // Else it must be a logical command.
+                    {
+                        // The line must be a logical command (add/sub/neg etc.)
+                        switch (line)
+                        {
+                            case "add":
+                                this.LogCommandAdd();
+                                break;
+                            case "eq":
+                                this.LogCommandEq();
+                                break;
+                            case "lt":
+                                this.LogCommandLt();
+                                break;
+                            case "gt":
+                                this.LogCommandGt();
+                                break;
+                            case "sub":
+                                this.LogCommandSub();
+                                break;
+                            case "neg":
+                                this.LogCommandNeg();
+                                break;
+                            case "and":
+                                this.LogCommandAnd();
+                                break;
+                            case "or":
+                                this.LogCommandOr();
+                                break;
+                            case "not":
+                                this.LogCommandNot();
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+
+                    if (line == string.Empty)
+                        throw new Exception("No known conversion was found on line: " + line);
+
+                    // Test START
+                    List<string> currentLinesAdded = new List<string>();
+                    currentLinesAdded = this.convertedLinesStack.ToList();
+                    currentLinesAdded.RemoveRange(0, beginningLinesCount);
+
+                    List<string> currentLinesAddedDisplay = currentLinesAdded;
+                    // Test END
 
                 }
-                else // line.Length <= 3
-                {
-                    // The line must be a logical command (add/sub/neg etc.)
-                    switch (line)
-                    {
-                        case "add":
-                            this.LogCommandAdd();
-                            break;
-                        case "eq":
-                            this.LogCommandEq();
-                            break;
-                        case "lt":
-                            this.LogCommandLt();
-                            break;
-                        case "gt":
-                            this.LogCommandGt();
-                            break;
-                        case "sub":
-                            this.LogCommandSub();
-                            break;
-                        case "neg":
-                            this.LogCommandNeg();
-                            break;
-                        case "and":
-                            this.LogCommandAnd();
-                            break;
-                        case "or":
-                            this.LogCommandOr();
-                            break;
-                        case "not":
-                            this.LogCommandNot();
-                            break;
-                        default:
-                            break;
-                    }
-                }
 
-                if (line == string.Empty)
-                    throw new Exception("No known conversion was found on line: " + line);
 
-                // Test START
-                List<string> currentLinesAdded = new List<string>();
-                currentLinesAdded = this.convertedLinesStack.ToList();
-                currentLinesAdded.RemoveRange(0, beginningLinesCount);
 
-                List<string> currentLinesAddedDisplay = currentLinesAdded;
-                // Test END
-                
-            }
+            } while (repeatLines);
+            
+           
 
             return convertedLinesStack.ToArray();
+        }
+
+        private void PushSelection(string type, short value)
+        {
+            // Switch on the type on pop command.
+            switch (type)
+            {
+                case "constant":
+                    this.AddConstant(value);
+
+                    // Advance the stack pointer.
+                    this.PointerAdvance();
+                    break;
+
+                case "pointer":
+                    if (value == 0)
+                    {
+                        this.PushPointer0();
+                    }
+                    else if (value == 1)
+                    {
+                        this.PushPointer1();
+                    }
+                    break;
+
+                case "this":
+                    this.PushThis(value);
+                    break;
+
+                case "that":
+                    this.PushThat(value);
+                    break;
+
+                case "local":
+                    this.PushLocal(value);
+                    break;
+
+                case "argument":
+                    this.PushArgument(value);
+                    break;
+
+                case "temp":
+                    this.PushTemp(value);
+                    break;
+
+                case "static":
+                    this.PushStatic(value);
+                    break;
+
+                default:
+                    throw new Exception("An unknown command was sent to PUSH. The command sent was:" + type);
+            }
+
+        }
+
+        private void PopSelection(string type, short value)
+        {
+            // Switch on the type on pop command.
+            switch (type)
+            {
+                case "pointer":
+                    if (value == 0)
+                    {
+                        this.PopPointer0();
+                    }
+                    else if (value == 1)
+                    {
+                        this.PopPointer1();
+                    }
+                    break;
+
+                case "this":
+                    this.PopThis(value);
+                    break;
+
+                case "that":
+                    this.PopThat(value);
+                    break;
+
+                case "local":
+                    this.PopLocal(value);
+                    break;
+
+                case "argument":
+                    this.PopArgument(value);
+                    break;
+
+                case "temp":
+                    this.PopTemp(value);
+                    break;
+
+                case "static":
+                    this.PopStatic(value);
+                    break;
+
+                default:
+                    throw new Exception("An unknown command was sent to POP. The command sent was:" + type);
+            }
+
         }
 
         private void PointerAdvance()
@@ -353,15 +352,58 @@ namespace VMtoASM.VMConverter
             convertedLinesStack.Enqueue("D=M-D");
         }
 
-        private void AddConstant(short constantNum)
+        private void AddLabel(string labelName)
         {
-            // Stack operation
-            this.globalStack.Push(constantNum);
+            // Setup
+            string labelNametoAdd = labelName;
 
-            // Add ASM
-            convertedLinesStack.Enqueue("@" + constantNum);
-            convertedLinesStack.Enqueue("D=A");
+            // Stack operation
+
+
+
+            // ASM operation
+            this.convertedLinesStack.Enqueue("(" + labelNametoAdd + ")");
         }
+
+        private void AddIfGoto(string labelName)
+        {
+            // Setup
+            string labelNametoAdd = labelName;
+
+            // Stack operation
+
+            // ASM operation
+            //@SP				// if-goto LOOP_START
+            //AM=M-1
+            //D=M
+            //A=A-1
+            //@LOOP_START
+            //D;JNE
+
+            this.convertedLinesStack.Enqueue("@SP");
+            this.convertedLinesStack.Enqueue("AM=M-1");
+            this.convertedLinesStack.Enqueue("D=M");
+            this.convertedLinesStack.Enqueue("A=A-1");
+            this.convertedLinesStack.Enqueue("@" + labelNametoAdd);
+            this.convertedLinesStack.Enqueue("D;JNE");
+        }
+
+        private void AddGoto(string labelName)
+        {
+            // Setup
+            string labelNametoAdd = labelName;
+
+            // Stack operation
+
+            // ASM operation
+            //@END_PROGRAM		// goto END_PROGRAM
+            //0;JMP
+
+            this.convertedLinesStack.Enqueue("@" + labelNametoAdd);
+            this.convertedLinesStack.Enqueue("0;JMP");
+        }
+
+        #region LogicalOps
 
         private void LogCommandAdd()
         {
@@ -372,20 +414,6 @@ namespace VMtoASM.VMConverter
             int result = x + y;
 
             this.globalStack.Push((short)result);
-
-            // Add ASM:
-            //*
-            // @SP
-            // A=M
-            // D=D+A
-            //*
-
-            // Add ASM
-
-            // Old Working version - Works in ADD.VM
-            //convertedLinesStack.Enqueue("@SP");
-            //convertedLinesStack.Enqueue("A=M");
-            //convertedLinesStack.Enqueue("D=D+A");
 
             // Add ASM:
             //*
@@ -665,6 +693,77 @@ namespace VMtoASM.VMConverter
             convertedLinesStack.Enqueue("A=A-1");
             convertedLinesStack.Enqueue("M=M-D");
             convertedLinesStack.Enqueue("D=0");
+        }
+
+        #endregion LogicalOps
+
+        #region PushAndPop
+
+        private void AddConstant(short constantNum)
+        {
+            // Stack operation
+            this.globalStack.Push(constantNum);
+
+            // Add ASM
+            convertedLinesStack.Enqueue("@" + constantNum);
+            convertedLinesStack.Enqueue("D=A");
+        }
+
+
+        /// <summary>
+        /// Adds pop value to thisPointer.
+        /// </summary>
+        private void PushPointer0()
+        {
+            // Stack operation
+            this.globalStack.Push(this.thisPointer);
+
+            // Print ASM
+            //'
+            //@THIS 		// push pointer 0
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@THIS");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
+        }
+
+        /// <summary>
+        /// Adds pop value to thatPointer.
+        /// </summary>
+        private void PushPointer1()
+        {
+            // Stack operation
+            this.globalStack.Push(this.thatPointer);
+
+            // Print ASM
+            //'
+            //@THAT		// push pointer 1
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //*
+
+            convertedLinesStack.Enqueue("@THAT");
+            convertedLinesStack.Enqueue("D=M");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("A=M");
+            convertedLinesStack.Enqueue("M=D");
+            convertedLinesStack.Enqueue("@SP");
+            convertedLinesStack.Enqueue("M=M+1");
         }
 
         /// <summary>
@@ -1164,61 +1263,9 @@ namespace VMtoASM.VMConverter
         }
 
 
-        /// <summary>
-        /// Adds pop value to thisPointer.
-        /// </summary>
-        private void PushPointer0()
-        {
-            // Stack operation
-            this.globalStack.Push(this.thisPointer);
+        #endregion PushAndPop
 
-            // Print ASM
-            //'
-            //@THIS 		// push pointer 0
-            //D=M
-            //@SP
-            //A=M
-            //M=D
-            //@SP
-            //M=M+1
-            //*
-
-            convertedLinesStack.Enqueue("@THIS");
-            convertedLinesStack.Enqueue("D=M");
-            convertedLinesStack.Enqueue("@SP");
-            convertedLinesStack.Enqueue("A=M");
-            convertedLinesStack.Enqueue("M=D");
-            convertedLinesStack.Enqueue("@SP");
-            convertedLinesStack.Enqueue("M=M+1");
-        }
-
-        /// <summary>
-        /// Adds pop value to thatPointer.
-        /// </summary>
-        private void PushPointer1()
-        {
-            // Stack operation
-            this.globalStack.Push(this.thatPointer);
-
-            // Print ASM
-            //'
-            //@THAT		// push pointer 1
-            //D=M
-            //@SP
-            //A=M
-            //M=D
-            //@SP
-            //M=M+1
-            //*
-
-            convertedLinesStack.Enqueue("@THAT");
-            convertedLinesStack.Enqueue("D=M");
-            convertedLinesStack.Enqueue("@SP");
-            convertedLinesStack.Enqueue("A=M");
-            convertedLinesStack.Enqueue("M=D");
-            convertedLinesStack.Enqueue("@SP");
-            convertedLinesStack.Enqueue("M=M+1");
-        }
+        #region HelperFunctions
 
         private short PopFromStack()
         {
@@ -1254,6 +1301,8 @@ namespace VMtoASM.VMConverter
             else
                 return 0;
         }
+
+        #endregion HelperFunctions
 
         #region InputAndOutputFunctionality
         private List<string> GetStrippedLinesFromFile(FileInfo inputfile)

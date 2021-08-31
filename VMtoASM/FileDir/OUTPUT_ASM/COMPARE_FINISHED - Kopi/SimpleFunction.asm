@@ -2,13 +2,57 @@
 D=A
 @SP
 M=D
-
-// 0: function simplefunction.test 2
-
+@simplefunction.test_RETURN_LABEL7
+D=A
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@LCL
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@ARG
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@THIS
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@THAT
+D=M
+@SP
+A=M
+M=D
+@SP
+M=M+1
+@SP
+D=M
+@5
+D=D-A
+@2
+D=D-A
+@ARG
+M=D
+@SP
+D=M
+@LCL
+M=D
+@simplefunction.test
+0;JMP
+(simplefunction.test_RETURN_LABEL7)
 (simplefunction.test)
-
-// 1: push local 0
-
 @LCL
 D=M
 @0
@@ -19,9 +63,6 @@ A=M
 M=D
 @SP
 M=M+1
-
-// 2: push local 1
-
 @LCL
 D=M
 @1
@@ -32,23 +73,14 @@ A=M
 M=D
 @SP
 M=M+1
-
-// 3: add
-
 @SP
 AM=M-1
 D=M
 A=A-1
 M=M+D
-
-// 4: not
-
 @SP
 A=M-1
 M=!M
-
-// 5: push argument 0
-
 @ARG
 D=M
 @0
@@ -59,17 +91,11 @@ A=M
 M=D
 @SP
 M=M+1
-
-// 6: add
-
 @SP
 AM=M-1
 D=M
 A=A-1
 M=M+D
-
-// 7: push argument 1
-
 @ARG
 D=M
 @1
@@ -80,18 +106,12 @@ A=M
 M=D
 @SP
 M=M+1
-
-// 8: sub
-
 @SP
 AM=M-1
 D=M
 A=A-1
 M=M-D
 D=0
-
-// 9: return
-
 @LCL
 D=M
 @FRAME

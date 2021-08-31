@@ -21,6 +21,11 @@ namespace VMtoASM.VMConverter
         // Stack to contain the converted ASM lines.
         private Queue<string> convertedLinesStack;
 
+
+        // This no longer gives a clear image of the stack functionality
+        // because loops and function support has not been implemented in the simulation.
+        // I found out that there was no need to keep track of stack values...
+        //
         // Simulation of stack functions.
         private Stack<short> globalStack;   // Global stack sim
         private short thisPointer;          // THIS pointer sim
@@ -39,6 +44,8 @@ namespace VMtoASM.VMConverter
         private short[] staticMemory;           // STATIC array to contain memory
         private short staticStartMemory = 16;   // STATIC start location
 
+        private string currentFunction;
+        private int currentFunctionStaticCounter;
 
         // Counter to keep track of available label numbers.
         private ulong labelCounter = 0;
@@ -64,7 +71,7 @@ namespace VMtoASM.VMConverter
         /// </summary>
         public void ConvertAllInputFiles()
         {
-            foreach (FileInfo inputVMFile in this.GetAvailableInputFiles())
+            foreach (FileToConvert inputVMFile in this.GetFilesToConvert())
             {
                 this.ConvertSingle(inputVMFile);
             }
@@ -75,7 +82,7 @@ namespace VMtoASM.VMConverter
         /// Places this file in output directory.
         /// </summary>
         /// <param name="inputVMFile">VM file to convert.</param>
-        public void ConvertSingle(FileInfo inputVMFile)
+        public void ConvertSingle(FileToConvert inputVMFile)
         {
             // Get the lines from input file - with comments and spaces stripped.
             List<string> strippedLinesFromFiles = this.GetStrippedLinesFromFile(inputVMFile);
@@ -84,7 +91,7 @@ namespace VMtoASM.VMConverter
             string[] convertedLines = this.ConvertLinesToAsm(strippedLinesFromFiles);
 
             // Write lines to output .asm file,
-            this.WriteLinesToOutputFile(convertedLines, inputVMFile.FullName);
+            this.WriteLinesToOutputFile(convertedLines, inputVMFile.Name);
         }
 
         private string[] ConvertLinesToAsm(List<string> strippedLinesFromFiles)
@@ -98,6 +105,12 @@ namespace VMtoASM.VMConverter
             ulong startLine = 0;
             ulong endLine =  (ulong)strippedLinesFromFiles.Count();
 
+            // Reset label counter and add Bootstrap Lines
+            this.labelCounter = 0;
+            this.currentFunction = string.Empty;
+            this.currentFunctionStaticCounter = 0;
+            this.AddBootstrapLines();
+
             do
             {
                 repeatLines = false;
@@ -108,9 +121,12 @@ namespace VMtoASM.VMConverter
                     StringBuilder convertedLineSB = new StringBuilder();
                     int beginningLinesCount = this.convertedLinesStack.Count;
 
-
                     // Convert line to lower, to make it case insensitive.
                     string line = strippedLinesFromFiles[(int)lineNumber].ToLower().Trim();
+
+                    this.convertedLinesStack.Enqueue("");
+                    this.convertedLinesStack.Enqueue($"// {lineNumber}: {line}");
+                    this.convertedLinesStack.Enqueue("");
 
                     // Split the line to seperate command, argument and value parts.
                     string[] pointerArgumentArray = line.Split(" ");
@@ -154,6 +170,28 @@ namespace VMtoASM.VMConverter
                         //startLine = labelLines[pointerArgumentArray[1]];
                         //repeatLines = true;
                         //break;
+                    }
+                    else if (lineCommandPart == "function")
+                    {
+                        this.currentFunction = pointerArgumentArray[1];
+                        this.currentFunctionStaticCounter = 0;
+
+                        if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                        {
+                            this.AddFunctionInit(pointerArgumentArray[1], constantNum);
+                        }
+                    }
+                    else if (lineCommandPart == "call")
+                    {
+
+                        if (Int16.TryParse(pointerArgumentArray[2], out short constantNum))
+                        {
+                            this.AddFunctionCall(pointerArgumentArray[1], constantNum);
+                        }
+                    }
+                    else if(lineCommandPart == "return")
+                    {
+                        this.AddReturn();
                     }
                     else // Else it must be a logical command.
                     {
@@ -212,6 +250,19 @@ namespace VMtoASM.VMConverter
            
 
             return convertedLinesStack.ToArray();
+        }
+
+        private void AddBootstrapLines()
+        {
+            // ASM
+            //@256
+            //D=A
+            //@SP
+            //M=D
+            this.convertedLinesStack.Enqueue("@256");
+            this.convertedLinesStack.Enqueue("D=A");
+            this.convertedLinesStack.Enqueue("@SP");
+            this.convertedLinesStack.Enqueue("M=D");
         }
 
         private void PushSelection(string type, short value)
@@ -402,6 +453,243 @@ namespace VMtoASM.VMConverter
             this.convertedLinesStack.Enqueue("@" + labelNametoAdd);
             this.convertedLinesStack.Enqueue("0;JMP");
         }
+
+        #region Functions
+
+        private void AddFunctionCall(string functionName, short functionArguments)
+        {
+            // Add ASM
+            //@RETURN_LABEL0		// sys:11:function Sys.init 0  // start label
+            //D=A
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //@LCL
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //@ARG
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //@THIS
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //@THAT
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
+            //@SP
+            //D=M
+            //@5
+            //D=D-A
+            //@0				// sys:11:function Sys.init 0 // argument number
+            //D=D-A
+            //@ARG
+            //M=D
+            //@SP
+            //D=M
+            //@LCL
+            //M=D
+            //@Sys.init         // function name
+            //0;JMP
+            //(RETURN_LABEL0)   // start label
+
+            string labelName = this.GetUniqueLabel(functionName +"_RETURN_LABEL");
+            this.convertedLinesStack.Enqueue("@" + labelName);
+            this.convertedLinesStack.Enqueue("D=A");
+            this.convertedLinesStack.Enqueue("@SP");
+            this.convertedLinesStack.Enqueue("A=M");
+            this.convertedLinesStack.Enqueue("M=D");
+            this.convertedLinesStack.Enqueue("@SP");
+            this.convertedLinesStack.Enqueue("M=M+1");//M=M+1
+            this.convertedLinesStack.Enqueue("@LCL");//@LCL
+            this.convertedLinesStack.Enqueue("D=M");//D=M
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+
+            this.convertedLinesStack.Enqueue("A=M");//A=M
+            this.convertedLinesStack.Enqueue("M=D");//M=D
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("M=M+1");//M=M+1
+            this.convertedLinesStack.Enqueue("@ARG");//@ARG
+            this.convertedLinesStack.Enqueue("D=M");//D=M
+            this.convertedLinesStack.Enqueue("@SP"); //@SP
+            this.convertedLinesStack.Enqueue("A=M");//A=M
+            this.convertedLinesStack.Enqueue("M=D");//M=D
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("M=M+1");//M=M+1
+            this.convertedLinesStack.Enqueue("@THIS");//@THIS
+            this.convertedLinesStack.Enqueue("D=M");//D=M
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("A=M");//A=M
+            this.convertedLinesStack.Enqueue("M=D");//M=D
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("M=M+1");//M=M+1
+            this.convertedLinesStack.Enqueue("@THAT");//@THAT
+            this.convertedLinesStack.Enqueue("D=M");//D=M
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("A=M");//A=M
+            this.convertedLinesStack.Enqueue("M=D");//M=D
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("M=M+1");//M=M+1
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("D=M");//D=M
+            this.convertedLinesStack.Enqueue("@5");//@5
+            this.convertedLinesStack.Enqueue("D=D-A");//D=D-A
+            this.convertedLinesStack.Enqueue("@" + functionArguments);//@0				// sys:11:function Sys.init 0 // argument number
+            this.convertedLinesStack.Enqueue("D=D-A"); //D=D-A
+            this.convertedLinesStack.Enqueue("@ARG");//@ARG
+            this.convertedLinesStack.Enqueue("M=D");//M=D
+            this.convertedLinesStack.Enqueue("@SP");//@SP
+            this.convertedLinesStack.Enqueue("D=M");//D=M
+            this.convertedLinesStack.Enqueue("@LCL");//@LCL
+            this.convertedLinesStack.Enqueue("M=D");//M=D
+            this.convertedLinesStack.Enqueue("@" + functionName); //@Sys.init         // function name
+            this.convertedLinesStack.Enqueue("0;JMP");//0;JMP
+            this.convertedLinesStack.Enqueue("(" + labelName + ")");//(RETURN_LABEL0)   // start label
+
+        }
+
+        private void AddFunctionInit(string functionName, short functionArguments)
+        {
+            if(functionName == "sys.init")
+            {
+                this.AddFunctionCall(functionName, functionArguments);
+            }
+
+            this.convertedLinesStack.Enqueue("(" + functionName + ")");
+        }
+
+        private void AddReturn()
+        {
+            // ASM
+            //@LCL				// main:19:return
+            //D=M
+            //@FRAME
+            //M=D
+            //@5
+            //A=D-A
+            //D=M
+            //@RET
+            //M=D
+            //@ARG
+            //D=M
+            //@0
+            //D=D+A
+            //@R13
+            //M=D
+            //@SP
+            //AM=M-1
+            //D=M
+            //@R13
+            //A=M
+            //M=D
+            //@ARG
+            //D=M
+            //@SP
+            //M=D+1
+            //@FRAME
+            //D=M-1
+            //AM=D
+            //D=M
+            //@THAT
+            //M=D
+            //@FRAME
+            //D=M-1
+            //AM=D
+            //D=M
+            //@THIS
+            //M=D
+            //@FRAME
+            //D=M-1
+            //AM=D
+            //D=M
+            //@ARG
+            //M=D
+            //@FRAME
+            //D=M-1
+            //AM=D
+            //D=M
+            //@LCL
+            //M=D
+            //@RET
+            //A=M
+            //0;JMP
+
+
+
+            convertedLinesStack.Enqueue("@LCL");//@LCL				// main:19:return
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@FRAME");//@FRAME
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@5");//@5
+            convertedLinesStack.Enqueue("A=D-A");//A=D-A
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@RET");//@RET
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@ARG");//@ARG
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@0");//@0
+            convertedLinesStack.Enqueue("D=D+A");//D=D+A
+            convertedLinesStack.Enqueue("@R13");//@R13
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@SP");//@SP
+            convertedLinesStack.Enqueue("AM=M-1");//AM=M-1
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@R13");//@R13
+            convertedLinesStack.Enqueue("A=M");//A=M
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@ARG");//@ARG
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@SP");//@SP
+            convertedLinesStack.Enqueue("M=D+1");//M=D+1
+            convertedLinesStack.Enqueue("@FRAME");//@FRAME
+            convertedLinesStack.Enqueue("D=M-1");//D=M-1
+            convertedLinesStack.Enqueue("AM=D");//AM=D
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@THAT");//@THAT
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@FRAME");//@FRAME
+            convertedLinesStack.Enqueue("D=M-1");//D=M-1
+            convertedLinesStack.Enqueue("AM=D");//AM=D
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@THIS");//@THIS
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@FRAME");//@FRAME
+            convertedLinesStack.Enqueue("D=M-1");//D=M-1
+            convertedLinesStack.Enqueue("AM=D");//AM=D
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@ARG");//@ARG
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@FRAME");//@FRAME
+            convertedLinesStack.Enqueue("D=M-1");//D=M-1
+            convertedLinesStack.Enqueue("AM=D");//AM=D
+            convertedLinesStack.Enqueue("D=M");//D=M
+            convertedLinesStack.Enqueue("@LCL");//@LCL
+            convertedLinesStack.Enqueue("M=D");//M=D
+            convertedLinesStack.Enqueue("@RET");//@RET
+            convertedLinesStack.Enqueue("A=M");//A=M
+            convertedLinesStack.Enqueue("0;JMP");//0;JMP
+
+
+        }
+
+        #endregion Functions
 
         #region LogicalOps
 
@@ -1109,6 +1397,18 @@ namespace VMtoASM.VMConverter
             convertedLinesStack.Enqueue("@SP");
             convertedLinesStack.Enqueue("M=M+1");
 
+            // Updated from functions
+            //@ARG		// push argument 0
+            //D=M
+            //@0
+            //D=D+A
+            //A=D
+            //D=M
+            //@SP
+            //A=M
+            //M=D
+            //@SP
+            //M=M+1
 
 
         }
@@ -1199,12 +1499,23 @@ namespace VMtoASM.VMConverter
 
         private void PopStatic(short memoryLocation)
         {
+            if (this.currentFunction != string.Empty)
+            {
+                string[] functionNameArr = this.currentFunction.Split(".");
 
-            int staticMemoryLocation = this.staticStartMemory + memoryLocation;
+                string staticMemoryName = $"{functionNameArr[0]}.static{this.currentFunctionStaticCounter}";
+                convertedLinesStack.Enqueue("@" + staticMemoryName);
+                this.currentFunctionStaticCounter++;
+            }
+            else
+            {
+                int staticMemoryLocation = this.staticStartMemory + memoryLocation;
+                convertedLinesStack.Enqueue("@" + staticMemoryLocation);
+            }
 
             // Stack operation
-            short popValue = this.PopFromStack();
-            this.staticMemory[staticMemoryLocation] = popValue;
+            // short popValue = this.PopFromStack();
+            // this.staticMemory[staticMemoryLocation] = popValue;
 
             // Print ASM
             //'
@@ -1220,7 +1531,7 @@ namespace VMtoASM.VMConverter
             //M=D
             //*
 
-            convertedLinesStack.Enqueue("@" + staticMemoryLocation);
+            
             convertedLinesStack.Enqueue("D=A");
             convertedLinesStack.Enqueue("@R13");
             convertedLinesStack.Enqueue("M=D");
@@ -1235,11 +1546,25 @@ namespace VMtoASM.VMConverter
 
         private void PushStatic(short memoryLocation)
         {
-            int staticMemoryLocation = this.staticStartMemory + memoryLocation;
+            if (this.currentFunction != string.Empty)
+            {
+                string[] functionNameArr = this.currentFunction.Split(".");
+
+                string staticMemoryName = $"{functionNameArr[0]}.static{this.currentFunctionStaticCounter}";
+                convertedLinesStack.Enqueue($"@" + staticMemoryName);
+                this.currentFunctionStaticCounter++;
+            }
+            else
+            {
+                int staticMemoryLocation = this.staticStartMemory + memoryLocation;
+                convertedLinesStack.Enqueue("@" + staticMemoryLocation);
+            }
+
+            //int staticMemoryLocation = this.staticStartMemory + memoryLocation;
 
             // Stack operation
-            this.globalStack.Push(this.staticMemory[staticMemoryLocation]);
-            this.staticMemory[staticMemoryLocation] = 0;
+            //this.globalStack.Push(this.staticMemory[staticMemoryLocation]);
+            //this.staticMemory[staticMemoryLocation] = 0;
 
             // Print ASM
             //'
@@ -1252,7 +1577,6 @@ namespace VMtoASM.VMConverter
             //M=M+1
             //*
 
-            convertedLinesStack.Enqueue("@" + staticMemoryLocation);
             convertedLinesStack.Enqueue("D=M");
             convertedLinesStack.Enqueue("@SP");
             convertedLinesStack.Enqueue("A=M");
@@ -1305,44 +1629,38 @@ namespace VMtoASM.VMConverter
         #endregion HelperFunctions
 
         #region InputAndOutputFunctionality
-        private List<string> GetStrippedLinesFromFile(FileInfo inputfile)
+        private List<string> GetStrippedLinesFromFile(FileToConvert inputfile)
         {
             List<string> allLinesInFile = new List<string>();
 
-            // Read the file and display it line by line. 
-            using (StreamReader file = new StreamReader(inputfile.FullName))
+            foreach (string line in inputfile.Lines)
             {
-                string line;
+                string outputLineToAdd = line;
 
-                while ((line = file.ReadLine()) != null)
+                // check if line is empty
+                if (line.Length < 1 || line == "" || line == string.Empty)
                 {
-                    string outputLineToAdd = line;
+                    continue;
+                }
 
-                    // check if line is empty
-                    if (line.Length < 1 || line == "" || line == string.Empty)
+                if (line.Contains("//"))
+                {
+                    // Split line by comment.
+                    string[] lineCommentArray = line.Split("//");
+
+                    // Set which 
+                    if (lineCommentArray[0].ToString().Trim().Length < 1
+                        || lineCommentArray[0].ToString().Trim() == "/")
                     {
                         continue;
                     }
-
-                    if (line.Contains("//"))
+                    else
                     {
-                        // Split line by comment.
-                        string[] lineCommentArray = line.Split("//");
-
-                        // Set which 
-                        if (lineCommentArray[0].ToString().Trim().Length < 1
-                            || lineCommentArray[0].ToString().Trim() == "/")
-                        {
-                            continue;
-                        }
-                        else
-                        {
-                            outputLineToAdd = lineCommentArray[0].ToString();
-                        }
+                        outputLineToAdd = lineCommentArray[0].ToString();
                     }
-
-                    allLinesInFile.Add(outputLineToAdd);
                 }
+
+                allLinesInFile.Add(outputLineToAdd);
             }
 
             return allLinesInFile;
@@ -1387,6 +1705,80 @@ namespace VMtoASM.VMConverter
             }
 
             return listOfAvailableFiles.ToArray();
+        }
+
+        private List<FileToConvert> GetFilesToConvert()
+        {
+            // Dictionary to hold the name and content of all files to convert.
+            List<FileToConvert> filesToConvertList = new List<FileToConvert>();
+
+            FileInfo[] fileArray = this.GetAvailableInputFiles();
+
+            foreach (var inputfile in fileArray)
+            {
+                List<string> allLinesInFile = this.StripLinesFromFile(inputfile).ToList();
+                filesToConvertList.Add(new FileToConvert(inputfile.Name, allLinesInFile));
+            }
+
+            // Find directories.
+            DirectoryInfo[] singleAsmDirectories = this.inputDirectory.GetDirectories();
+
+            foreach (DirectoryInfo directory in singleAsmDirectories)
+            {
+                // Compine all files in a directory, give the new "file" the name of the directory.
+                List<FileInfo> inputASMfiles = directory.GetFiles(ALLOWED_INPUT_FILES).ToList();
+                List<FileInfo> inputASMfilesSorted = new List<FileInfo>();
+
+                FileInfo sysFile = null;
+                int sysfileLocation = 0;
+
+                // Sort the input files in order to put sys.vm first.
+                for (int i = 0; i < inputASMfiles.Count; i++)
+                {
+                    if(inputASMfiles[i].Name.ToLower() == "sys.vm")
+                    {
+                        sysFile = inputASMfiles[i];
+                        sysfileLocation = i;
+                    }
+                }
+
+                if(sysFile != null)
+                {
+                    inputASMfiles.RemoveAt(sysfileLocation);
+                    inputASMfilesSorted.Add(sysFile);
+                }
+                inputASMfilesSorted.AddRange(inputASMfiles);
+
+
+                List<string> allLinesInFile = new List<string>();
+
+                foreach (var file in inputASMfilesSorted)
+                {
+                    allLinesInFile.AddRange(this.StripLinesFromFile(file));
+                }
+
+                filesToConvertList.Add(new FileToConvert(directory.Name, allLinesInFile));
+            }
+
+            return filesToConvertList;
+        }
+
+        private IEnumerable<string> StripLinesFromFile(FileInfo fileInfo)
+        {
+            List<string> allLinesInFile = new List<string>();
+
+            // Read the file and display it line by line. 
+            using (StreamReader file = new StreamReader(fileInfo.FullName))
+            {
+                string line;
+
+                while ((line = file.ReadLine()) != null)
+                {
+                    allLinesInFile.Add(line);
+                }
+            }
+
+            return allLinesInFile;
         }
 
         /// <summary>
